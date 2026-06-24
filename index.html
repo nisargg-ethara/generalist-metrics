@@ -14,6 +14,7 @@
     --line:rgba(27,27,25,.09); --line2:rgba(27,27,25,.16);
     --good:#15795B; --good-bg:#E7F2ED; --warn:#B0730E; --warn-bg:#FBF1DE;
     --bad:#BB3B2C; --bad-bg:#FBEDEB; --accent:#33547D; --accent-bg:#EAF0F7;
+    --lead:#6A4FB6; --lead-bg:#F0ECF9;
     --r:10px; --r-sm:7px;
     --mono:'IBM Plex Mono',ui-monospace,monospace; --sans:'Inter',system-ui,sans-serif;
   }
@@ -106,6 +107,12 @@
   tbody td.name{font-family:var(--sans);font-weight:500}
   tbody tr.flagged{background:var(--bad-bg)}
   tbody tr.flagged td.name{color:var(--bad)}
+  tbody tr.lead{background:var(--lead-bg)}
+  tbody tr.lead:hover{background:var(--lead-bg)}
+  tbody tr.lead td.name{color:var(--lead)}
+  .leadtag{display:inline-block;font-family:var(--sans);font-size:10px;font-weight:600;letter-spacing:.04em;color:#fff;background:var(--lead);border-radius:20px;padding:1px 7px;margin-left:7px;vertical-align:middle}
+  .lead-toggle{display:flex;align-items:center;gap:7px;height:36px;font-size:13px;color:var(--ink);white-space:nowrap;border:1px solid var(--line2);border-radius:var(--r-sm);padding:0 12px;cursor:pointer}
+  .lead-toggle input{accent-color:var(--lead)}
   tbody tr:hover{background:var(--bg)}
   .meter{width:96px;height:8px;background:var(--line);border-radius:6px;position:relative;display:inline-block;vertical-align:middle;overflow:hidden}
   .meter>span{position:absolute;left:0;top:0;bottom:0;border-radius:6px;background:var(--accent)}
@@ -114,7 +121,7 @@
   .status{display:inline-flex;align-items:center;gap:6px;font-family:var(--sans);font-size:12px}
 
   /* upload */
-  .up-zone{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .up-zone{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}
   .drop{border:1.5px dashed var(--line2);border-radius:var(--r);padding:20px;text-align:center;transition:.14s;cursor:pointer}
   .drop:hover,.drop.drag{border-color:var(--accent);background:var(--accent-bg)}
   .drop .t{font-weight:600;font-size:13.5px;margin-bottom:4px}
@@ -159,6 +166,9 @@
       <div class="ctrl slider-ctrl">
         <label>Flag below <span class="val" id="thr-val">1.3</span> h/day avg</label>
         <input type="range" id="f-thr" min="0" max="6" step="0.1" value="1.3">
+      </div>
+      <div class="ctrl"><label>Leads</label>
+        <label class="lead-toggle"><input type="checkbox" id="f-hidelead"> Hide leads</label>
       </div>
       <div class="ctrl"><label>&nbsp;</label><button class="btn" id="btn-reset">Reset filters</button></div>
     </div>
@@ -247,9 +257,14 @@
         <div class="d">Rank, Annotator Email, Final Score (0-100), … , Quadrant</div>
         <input type="file" accept=".csv" id="in-roll">
       </label>
+      <label class="drop" id="drop-leads">
+        <div class="t">Set leads list (optional)</div>
+        <div class="d">One email per line — these are marked ★ LEAD and never flagged</div>
+        <input type="file" accept=".csv,.txt" id="in-leads">
+      </label>
     </div>
     <p style="font-size:12px;color:var(--muted);margin:14px 0 0;line-height:1.6">
-      New daily rows are merged by <b>date + email</b> (re-uploading a date overwrites it), then every metric, chart and flag recomputes instantly. Hours, averages, attendance and submissions are always derived live from daily data; <b>Score</b> and <b>Quadrant</b> come from the scorecard you upload. Nothing leaves your browser.
+      New daily rows are merged by <b>date + email</b> (re-uploading a date overwrites it), then every metric, chart and flag recomputes instantly. Hours, averages, attendance and submissions are always derived live from daily data; <b>Score</b> and <b>Quadrant</b> come from the scorecard. <b>Leads</b> (from leads.csv) are marked and excluded from flags and the "lowest" chart. Nothing leaves your browser.
     </p>
   </div>
 </div>
@@ -269,6 +284,14 @@ let rolling = ROLLING_SEED.slice();
 // (e.g. opened locally), the built-in snapshot above is used instead.
 const DATA_DAILY_URL = 'daily.csv';
 const DATA_SCORECARD_URL = 'scorecard.csv';
+// Leads: people who do other work for the team. They are marked, never flagged,
+// and can be hidden via the "Hide leads" toggle. Edit leads.csv on your host
+// (one email per line) to maintain this list, or hard-code emails here as a fallback.
+const LEADS = [
+  // 'someone@ethara.ai',
+];
+const DATA_LEADS_URL = 'leads.csv';
+let leads = new Set(LEADS.map(e=>e.toLowerCase()));
 let selectedPeople = new Set();
 let sortKey = 'avg', sortDir = 1; // 1 asc, -1 desc
 const QUAD_COLORS = {Star:'#15795B', Sprinter:'#33547D', Plodder:'#B0730E', Underperformer:'#BB3B2C'};
@@ -289,7 +312,8 @@ function getFilters(){
     start: $('#f-start').value,
     end: $('#f-end').value,
     quad: $('#f-quad').value,
-    thr: parseFloat($('#f-thr').value)
+    thr: parseFloat($('#f-thr').value),
+    hideLeads: $('#f-hidelead') ? $('#f-hidelead').checked : false
   };
 }
 
@@ -319,15 +343,17 @@ function aggregate(){
       e:o.e, name:nm(o.e), hours:o.hours, subs:o.subs, days, avg,
       att, aht: o.ahtN? o.ahtSum/o.ahtN : null,
       score: rr.score!=null? rr.score : null,
-      quadrant: rr.quadrant || '—'
+      quadrant: rr.quadrant || '—',
+      isLead: leads.has(o.e.toLowerCase())
     };
   });
-  // filters: people + quadrant
+  // filters: people + quadrant + hide-leads
   if(selectedPeople.size) rows = rows.filter(r=> selectedPeople.has(r.e));
   if(f.quad!=='All') rows = rows.filter(r=> r.quadrant===f.quad);
-  // flag: productivity-based on avg hours/day. attendance kept as context only.
+  if(f.hideLeads) rows = rows.filter(r=> !r.isLead);
+  // flag: productivity-based on avg hours/day. Leads are never flagged.
   rows.forEach(r=>{
-    r.flagged = r.avg < f.thr;
+    r.flagged = !r.isLead && r.avg < f.thr;
     const bits=['avg '+fmt(r.avg)+'h'];
     if(r.att < 50) bits.push('att '+fmt0(r.att)+'%');
     r.reason = bits.join(' · ');
@@ -413,6 +439,7 @@ function renderFlags(rows){
 }
 
 function statusOf(r){
+  if(r.isLead) return {t:'Lead',c:'var(--lead)'};
   if(r.flagged) return {t:'At risk',c:'var(--bad)'};
   if(r.avg>=4) return {t:'On target',c:'var(--good)'};
   if(r.avg>=2) return {t:'Steady',c:'var(--warn)'};
@@ -433,8 +460,8 @@ function renderTable(rows){
     const mClass = r.avg<1.5?'low':r.avg<3?'mid':r.avg<5?'':'ok';
     const st = statusOf(r);
     const qc = QUAD_COLORS[r.quadrant]||'var(--faint)';
-    return `<tr class="${r.flagged?'flagged':''}">
-      <td class="name">${r.name}</td>
+    return `<tr class="${r.isLead?'lead':(r.flagged?'flagged':'')}">
+      <td class="name">${r.name}${r.isLead?'<span class="leadtag">★ LEAD</span>':''}</td>
       <td>${fmt(r.avg)}</td>
       <td><span class="meter ${mClass}"><span style="width:${capPct}%"></span></span> <span style="color:var(--faint);font-size:11px">${fmt0(capPct)}%</span></td>
       <td>${fmt(r.hours,1)}</td>
@@ -499,7 +526,7 @@ function renderQuadScatter(){
 }
 
 function renderLow(rows){
-  const low = rows.slice().sort((a,b)=>a.avg-b.avg).slice(0,20);
+  const low = rows.filter(r=>!r.isLead).sort((a,b)=>a.avg-b.avg).slice(0,20);
   $('#low-box').style.height = Math.max(220, low.length*19+70)+'px';
   if(charts.low) charts.low.destroy();
   charts.low = new Chart($('#ch-low'),{
@@ -615,18 +642,35 @@ function refreshWindowDefaults(setInputs){
 }
 function exportCSV(){
   const {rows}=aggregate();
-  const head=['Annotator','Avg h/day','Total hours','Days active','Attendance %','Submissions','AHT','Score','Quadrant','Flagged'];
-  const lines=[head.join(',')].concat(rows.map(r=>[r.name,fmt(r.avg),fmt(r.hours),r.days,fmt0(r.att),fmt0(r.subs),r.aht==null?'':fmt(r.aht,2),r.score==null?'':fmt(r.score,1),r.quadrant,r.flagged?'YES':''].join(',')));
+  const head=['Annotator','Lead','Avg h/day','Total hours','Days active','Attendance %','Submissions','AHT','Score','Quadrant','Flagged'];
+  const lines=[head.join(',')].concat(rows.map(r=>[r.name,r.isLead?'YES':'',fmt(r.avg),fmt(r.hours),r.days,fmt0(r.att),fmt0(r.subs),r.aht==null?'':fmt(r.aht,2),r.score==null?'':fmt(r.score,1),r.quadrant,r.flagged?'YES':''].join(',')));
   const blob=new Blob([lines.join('\n')],{type:'text/csv'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='ops_export.csv';a.click();
+}
+// leads list: any line containing an email; skips headers/comments/blanks
+function parseLeads(text){
+  const out=[];
+  text.replace(/\r/g,'').split('\n').forEach(line=>{
+    const l=line.trim();
+    if(!l || l.startsWith('#')) return;
+    // pull the email out of the row regardless of column order/count
+    const tok = l.split(/[,;\t ]+/).find(t=>t.includes('@'));
+    if(tok) out.push(tok.trim().toLowerCase());
+  });
+  return out;
+}
+function replaceLeads(text){
+  leads = new Set(parseLeads(text));
+  buildPeople(); render(); toast(`Leads updated — ${leads.size} marked.`);
 }
 
 /* ---------- wire up ---------- */
 function bind(){
   ['f-start','f-end','f-quad'].forEach(id=>$('#'+id).addEventListener('change',render));
   $('#f-thr').addEventListener('input',e=>{$('#thr-val').textContent=fmt(parseFloat(e.target.value));render();});
+  $('#f-hidelead').addEventListener('change',render);
   $('#tbl-search').addEventListener('input',()=>renderTable(aggregate().rows));
-  $('#btn-reset').onclick=()=>{selectedPeople.clear();updatePeopleLbl();$('#f-quad').value='All';$('#f-thr').value=1.3;$('#thr-val').textContent='1.3';refreshWindowDefaults(true);$('#tbl-search').value='';buildPeople();render();};
+  $('#btn-reset').onclick=()=>{selectedPeople.clear();updatePeopleLbl();$('#f-quad').value='All';$('#f-thr').value=1.3;$('#thr-val').textContent='1.3';$('#f-hidelead').checked=false;refreshWindowDefaults(true);$('#tbl-search').value='';buildPeople();render();};
   $('#btn-csv').onclick=exportCSV;
   // people popup
   $('#people-box').onclick=()=>{$('#people-pop').classList.toggle('open');buildPeople();$('#people-search').focus();};
@@ -643,6 +687,7 @@ function bind(){
   // uploads
   setupDrop('drop-daily','in-daily',mergeDaily);
   setupDrop('drop-roll','in-roll',replaceRolling);
+  setupDrop('drop-leads','in-leads',replaceLeads);
 }
 function setupDrop(zoneId,inputId,handler){
   const z=$('#'+zoneId), i=$('#'+inputId);
@@ -678,10 +723,16 @@ async function boot(){
     const rows = parseScoreRows(txt);
     if(rows.length){ rolling = rows; }
   }catch(e){ /* keep snapshot */ }
+  try{
+    const txt = await fetchCSV(DATA_LEADS_URL);
+    const ls = parseLeads(txt);
+    if(ls.length){ leads = new Set(ls); }
+  }catch(e){ /* keep hard-coded LEADS */ }
 
   const when = new Date().toLocaleString(undefined,{hour:'2-digit',minute:'2-digit',day:'numeric',month:'short'});
-  if(live) setStatus('live', `Live · ${DATA_DAILY_URL} · ${daily.length} records · loaded ${when}`);
-  else setStatus('snapshot', `Built-in snapshot · ${daily.length} records · ${DATA_DAILY_URL} not reachable (host it to go live)`);
+  const leadNote = leads.size ? ` · ${leads.size} leads` : '';
+  if(live) setStatus('live', `Live · ${DATA_DAILY_URL} · ${daily.length} records${leadNote} · loaded ${when}`);
+  else setStatus('snapshot', `Built-in snapshot · ${daily.length} records${leadNote} · ${DATA_DAILY_URL} not reachable (host it to go live)`);
 
   refreshWindowDefaults(true);
   buildPeople(); updatePeopleLbl(); bind();
