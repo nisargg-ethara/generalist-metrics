@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Annotator Ops — Live Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  :root{
+    --bg:#FAF9F6; --surface:#FFFFFF; --ink:#1B1B19; --muted:#74726B; --faint:#9C9A92;
+    --line:rgba(27,27,25,.09); --line2:rgba(27,27,25,.16);
+    --good:#15795B; --good-bg:#E7F2ED; --warn:#B0730E; --warn-bg:#FBF1DE;
+    --bad:#BB3B2C; --bad-bg:#FBEDEB; --accent:#33547D; --accent-bg:#EAF0F7;
+    --r:10px; --r-sm:7px;
+    --mono:'IBM Plex Mono',ui-monospace,monospace; --sans:'Inter',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;padding:0 0 80px}
+  .wrap{max-width:1240px;margin:0 auto;padding:0 28px}
+  h1,h2,h3{font-weight:600;margin:0}
+  .num{font-family:var(--mono);font-feature-settings:"tnum" 1}
+
+  /* header */
+  header{border-bottom:1px solid var(--line);background:var(--surface)}
+  .head-row{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;padding:24px 0 20px;flex-wrap:wrap}
+  .brand .eyebrow{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);font-weight:600;margin-bottom:6px}
+  .brand h1{font-size:25px;letter-spacing:-.02em}
+  .head-meta{text-align:right;font-size:12.5px;color:var(--muted)}
+  .head-meta b{font-family:var(--mono);color:var(--ink);font-weight:500}
+
+  /* controls */
+  .controls{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;padding:18px 0;border-bottom:1px solid var(--line)}
+  .ctrl{display:flex;flex-direction:column;gap:5px}
+  .ctrl label{font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--faint);font-weight:600}
+  input[type=date],select,input[type=text]{font-family:var(--sans);font-size:13.5px;color:var(--ink);background:var(--surface);border:1px solid var(--line2);border-radius:var(--r-sm);padding:8px 10px;height:36px;outline:none}
+  input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-bg)}
+  .slider-ctrl{min-width:190px}
+  .slider-ctrl .val{font-family:var(--mono);font-weight:600;color:var(--accent)}
+  input[type=range]{width:100%;accent-color:var(--accent);height:36px}
+  button.btn{font-family:var(--sans);font-size:13px;font-weight:500;height:36px;padding:0 14px;border:1px solid var(--line2);background:var(--surface);border-radius:var(--r-sm);cursor:pointer;color:var(--ink);transition:.12s}
+  button.btn:hover{background:var(--bg);border-color:var(--ink)}
+  button.btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+  button.btn.primary:hover{filter:brightness(1.08)}
+
+  /* people picker */
+  .people{position:relative}
+  .people-box{min-width:230px;border:1px solid var(--line2);border-radius:var(--r-sm);background:var(--surface);height:36px;display:flex;align-items:center;padding:0 10px;cursor:pointer;font-size:13.5px;color:var(--muted);justify-content:space-between;gap:8px}
+  .people-box .cnt{font-family:var(--mono);font-size:12px;background:var(--accent-bg);color:var(--accent);border-radius:20px;padding:2px 9px;font-weight:600}
+  .people-pop{position:absolute;z-index:40;top:42px;left:0;width:300px;max-height:320px;overflow:auto;background:var(--surface);border:1px solid var(--line2);border-radius:var(--r);box-shadow:0 12px 36px rgba(0,0,0,.13);padding:8px;display:none}
+  .people-pop.open{display:block}
+  .people-pop .srch{width:100%;margin-bottom:6px}
+  .opt{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer;font-size:13px}
+  .opt:hover{background:var(--bg)}
+  .opt input{accent-color:var(--accent)}
+
+  /* kpis */
+  .kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:14px;margin:22px 0}
+  .kpi{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:15px 16px}
+  .kpi .k-label{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--faint);font-weight:600;margin-bottom:9px;display:flex;align-items:center;gap:6px}
+  .kpi .k-val{font-family:var(--mono);font-size:27px;font-weight:600;letter-spacing:-.02em;line-height:1}
+  .kpi .k-sub{font-size:11.5px;color:var(--muted);margin-top:7px;font-family:var(--mono)}
+  .kpi.flag .k-val{color:var(--bad)}
+  .dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+  .pill{display:inline-block;font-family:var(--mono);font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px}
+  .pill.up{background:var(--good-bg);color:var(--good)} .pill.down{background:var(--bad-bg);color:var(--bad)}
+
+  /* panels */
+  .grid2{display:grid;grid-template-columns:1.35fr 1fr;gap:18px;margin-bottom:18px}
+  .panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:18px 20px}
+  .panel h3{font-size:14px;letter-spacing:-.01em;margin-bottom:3px}
+  .panel .sub{font-size:12px;color:var(--muted);margin-bottom:16px}
+  .chart-box{position:relative;width:100%}
+
+
+  /* flagged */
+  .flag-panel{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--bad);border-radius:var(--r);padding:16px 20px;margin-bottom:18px}
+  .flag-panel.clear{border-left-color:var(--good)}
+  .flag-head{display:flex;align-items:center;gap:10px;margin-bottom:13px}
+  .flag-head h3{font-size:14px}
+  .flag-head .cnt{font-family:var(--mono);font-weight:600;color:var(--bad);background:var(--bad-bg);padding:2px 10px;border-radius:20px;font-size:12px}
+  .flag-list{display:flex;flex-wrap:wrap;gap:8px}
+  .flag-chip{font-size:12px;background:var(--bad-bg);border:1px solid rgba(187,59,44,.2);border-radius:var(--r-sm);padding:6px 11px;display:flex;flex-direction:column;gap:1px}
+  .flag-chip .nm{font-weight:600;color:var(--bad)}
+  .flag-chip .rs{font-size:10.5px;color:var(--muted);font-family:var(--mono)}
+
+  /* table */
+  .tbl-tools{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:12px;flex-wrap:wrap}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  thead th{text-align:right;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--faint);font-weight:600;padding:9px 12px;border-bottom:1px solid var(--line2);cursor:pointer;white-space:nowrap;user-select:none}
+  thead th:first-child,tbody td:first-child{text-align:left}
+  thead th.sorted{color:var(--accent)}
+  thead th .arr{font-family:var(--mono);font-size:9px}
+  tbody td{padding:10px 12px;text-align:right;border-bottom:1px solid var(--line);font-family:var(--mono);font-size:13px}
+  tbody td.name{font-family:var(--sans);font-weight:500}
+  tbody tr.flagged{background:var(--bad-bg)}
+  tbody tr.flagged td.name{color:var(--bad)}
+  tbody tr:hover{background:var(--bg)}
+  .meter{width:96px;height:8px;background:var(--line);border-radius:6px;position:relative;display:inline-block;vertical-align:middle;overflow:hidden}
+  .meter>span{position:absolute;left:0;top:0;bottom:0;border-radius:6px;background:var(--accent)}
+  .meter.low>span{background:var(--bad)} .meter.mid>span{background:var(--warn)} .meter.ok>span{background:var(--good)}
+  .status{display:inline-flex;align-items:center;gap:6px;font-family:var(--sans);font-size:12px}
+
+  /* upload */
+  .up-zone{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .drop{border:1.5px dashed var(--line2);border-radius:var(--r);padding:20px;text-align:center;transition:.14s;cursor:pointer}
+  .drop:hover,.drop.drag{border-color:var(--accent);background:var(--accent-bg)}
+  .drop .t{font-weight:600;font-size:13.5px;margin-bottom:4px}
+  .drop .d{font-size:11.5px;color:var(--muted);font-family:var(--mono)}
+  .drop input{display:none}
+  .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--ink);color:#fff;font-size:13px;padding:11px 18px;border-radius:var(--r);opacity:0;transition:.25s;pointer-events:none;z-index:100;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .section-label{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);font-weight:600;margin:30px 0 14px}
+
+  @media(max-width:1080px){.kpis{grid-template-columns:repeat(3,1fr)}.grid2{grid-template-columns:1fr}}
+  @media(max-width:640px){.wrap{padding:0 16px}.kpis{grid-template-columns:repeat(2,1fr)}.up-zone{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="head-row">
+      <div class="brand">
+        <div class="eyebrow">Annotation Operations</div>
+        <h1>Team Performance — Live</h1>
+      </div>
+      <div class="head-meta">
+        <div>Dataset window&nbsp; <b id="m-window">—</b></div>
+        <div style="margin-top:3px">Records&nbsp; <b id="m-records">—</b> daily&nbsp;·&nbsp; <b id="m-people">—</b> people</div>
+      </div>
+    </div>
+    <div class="controls">
+      <div class="ctrl"><label>From</label><input type="date" id="f-start"></div>
+      <div class="ctrl"><label>To</label><input type="date" id="f-end"></div>
+      <div class="ctrl people">
+        <label>People</label>
+        <div class="people-box" id="people-box"><span id="people-lbl">All people</span><span class="cnt" id="people-cnt">all</span></div>
+        <div class="people-pop" id="people-pop">
+          <input type="text" class="srch" id="people-search" placeholder="Search name…">
+          <div id="people-opts"></div>
+        </div>
+      </div>
+      <div class="ctrl slider-ctrl">
+        <label>Flag below <span class="val" id="thr-val">1.3</span> h/day avg</label>
+        <input type="range" id="f-thr" min="0" max="6" step="0.1" value="1.3">
+      </div>
+      <div class="ctrl"><label>&nbsp;</label><button class="btn" id="btn-reset">Reset filters</button></div>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div id="data-status" style="display:flex;align-items:center;gap:9px;margin:18px 0 -4px;font-size:12.5px;color:var(--muted)">
+    <span class="dot" id="ds-dot" style="background:var(--faint)"></span>
+    <span id="ds-text">Loading data…</span>
+  </div>
+
+  <div class="kpis" id="kpis"></div>
+
+  <div class="panel" style="margin-bottom:18px">
+    <h3>Daily activity vs the 6 h/day target</h3>
+    <div class="sub">People active each day, total hours logged, and the expected ceiling (active people × 6 h).</div>
+    <div class="chart-box" style="height:300px"><canvas id="ch-timeline" role="img" aria-label="Daily timeline of active people and actual versus expected hours"></canvas></div>
+  </div>
+
+  <div class="flag-panel" id="flag-panel">
+    <div class="flag-head">
+      <h3>Flagged for review</h3><span class="cnt" id="flag-cnt">0</span>
+      <span style="font-size:12px;color:var(--muted)">average h/day below the flag threshold</span>
+    </div>
+    <div class="flag-list" id="flag-list"></div>
+  </div>
+
+  <div class="grid2">
+    <div class="panel">
+      <h3>Lowest 20 by average hours/day</h3>
+      <div class="sub">Where to look first. Dashed line marks the 6 h/day target.</div>
+      <div class="chart-box" id="low-box" style="height:430px"><canvas id="ch-low" role="img" aria-label="Horizontal bar chart of the twenty lowest performers by average hours per day"></canvas></div>
+    </div>
+    <div class="panel">
+      <h3>Submissions vs hours</h3>
+      <div class="sub">Throughput against effort. Bubble size = days active.</div>
+      <div class="chart-box" style="height:430px"><canvas id="ch-scatter" role="img" aria-label="Bubble chart of submissions versus total hours"></canvas></div>
+    </div>
+  </div>
+
+  <div class="section-label">Per-person detail · <span id="tbl-count" class="num">0</span> shown</div>
+  <div class="panel">
+    <div class="tbl-tools">
+      <input type="text" id="tbl-search" placeholder="Filter names in table…" style="min-width:240px">
+      <button class="btn" id="btn-csv">Export shown ↓ CSV</button>
+    </div>
+    <div style="overflow-x:auto">
+      <table id="tbl">
+        <thead><tr>
+          <th data-k="name">Annotator</th>
+          <th data-k="avg">Avg h/day <span class="arr"></span></th>
+          <th data-k="cap" style="min-width:140px">Capacity vs 6 h</th>
+          <th data-k="hours">Total h</th>
+          <th data-k="days">Days</th>
+          <th data-k="att">Attend.</th>
+          <th data-k="subs">Subs</th>
+          <th data-k="aht">AHT</th>
+          <th data-k="status" style="text-align:center">Status</th>
+        </tr></thead>
+        <tbody id="tbl-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ---------- state ---------- */
+let daily = [];
+// Source of truth: daily.csv must sit next to this HTML on your host/GitHub Pages.
+// Replace daily.csv in GitHub when you want everyone to see new data.
+const DATA_DAILY_URL = 'daily.csv';
+
+let selectedPeople = new Set();
+let sortKey = 'avg', sortDir = 1; // 1 asc, -1 desc
+const charts = {};
+
+const fmt = (n,d=1)=> (n==null||isNaN(n))?'—':Number(n).toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d});
+const fmt0 = n=> (n==null||isNaN(n))?'—':Math.round(n).toLocaleString();
+const nm = e=> e.split('@')[0];
+const $ = s=>document.querySelector(s);
+
+/* ---------- derived helpers ---------- */
+function allDates(){ return [...new Set(daily.map(r=>r.d))].sort(); }
+
+function getFilters(){
+  return {
+    start: $('#f-start').value,
+    end: $('#f-end').value,
+    thr: parseFloat($('#f-thr').value)
+  };
+}
+
+function datesInRange(f){
+  return allDates().filter(d=> d>=f.start && d<=f.end);
+}
+
+/* aggregate per person over the active filter */
+function aggregate(){
+  const f = getFilters();
+  const workdates = datesInRange(f);
+  const nWork = workdates.length || 1;
+  const inRange = daily.filter(r=> r.d>=f.start && r.d<=f.end);
+  const by = {};
+  for(const r of inRange){
+    if(!by[r.e]) by[r.e]={e:r.e,hours:0,subs:0,days:new Set(),ahtSum:0,ahtN:0};
+    const o=by[r.e]; o.hours+=r.h; o.subs+=r.s; o.days.add(r.d);
+    if(Number.isFinite(r.a)){o.ahtSum+=r.a;o.ahtN++;}
+  }
+  let rows = Object.values(by).map(o=>{
+    const days=o.days.size;
+    const avg= days? o.hours/days : 0;
+    const att= days/nWork*100;
+    return {
+      e:o.e, name:nm(o.e), hours:o.hours, subs:o.subs, days, avg,
+      att, aht: o.ahtN? o.ahtSum/o.ahtN : null
+    };
+  });
+  // filters: people
+  if(selectedPeople.size) rows = rows.filter(r=> selectedPeople.has(r.e));
+  // flag: productivity-based on avg hours/day. attendance kept as context only.
+  rows.forEach(r=>{
+    r.flagged = r.avg < f.thr;
+    const bits=['avg '+fmt(r.avg)+'h'];
+    if(r.att < 50) bits.push('att '+fmt0(r.att)+'%');
+    r.reason = bits.join(' · ');
+  });
+  return {rows, workdates, nWork, f};
+}
+
+/* per-day series for the timeline */
+function dailySeries(f){
+  const dates = datesInRange(f);
+  let pool = daily.filter(r=> r.d>=f.start && r.d<=f.end);
+  if(selectedPeople.size) pool = pool.filter(r=> selectedPeople.has(r.e));
+  return dates.map(d=>{
+    const rows = pool.filter(r=> r.d===d);
+    const people = new Set(rows.map(r=>r.e)).size;
+    const hours = rows.reduce((s,r)=>s+r.h,0);
+    return {d, people, hours, expected: people*6};
+  });
+}
+
+/* ---------- render ---------- */
+function render(){
+  const {rows, workdates, f} = aggregate();
+  renderKpis(rows, workdates);
+  renderFlags(rows);
+  renderTable(rows);
+  renderTimeline(f);
+  renderLow(rows);
+  renderScatter(rows);
+}
+
+function renderKpis(rows, workdates){
+  const active = rows.length;
+  const totHours = rows.reduce((s,r)=>s+r.hours,0);
+  const personDays = rows.reduce((s,r)=>s+r.days,0);
+  const expected = personDays*6;
+  const cap = expected? totHours/expected*100 : 0;
+  const avgDay = personDays? totHours/personDays : 0;
+  const flagged = rows.filter(r=>r.flagged).length;
+  const subs = rows.reduce((s,r)=>s+r.subs,0);
+  const kpis=[
+    {l:'Active people',v:fmt0(active),s:workdates.length+' working day'+(workdates.length===1?'':'s')},
+    {l:'Hours logged',v:fmt(totHours,0),s:fmt(avgDay)+' h/day avg'},
+    {l:'Expected (6h)',v:fmt(expected,0),s:fmt0(personDays)+' person-days'},
+    {l:'Capacity used',v:fmt(cap,0)+'%',s:(cap>=80?'on track':cap>=50?'below target':'well below'),cls:cap<50?'flag':''},
+    {l:'Submissions',v:fmt0(subs),s:fmt0(active?subs/active:0)+' per person'},
+    {l:'Flagged',v:fmt0(flagged),s:active?fmt0(flagged/active*100)+'% of shown':'—',cls:flagged?'flag':''}
+  ];
+  $('#kpis').innerHTML = kpis.map(k=>`
+    <div class="kpi ${k.cls||''}">
+      <div class="k-label">${k.l}</div>
+      <div class="k-val">${k.v}</div>
+      <div class="k-sub">${k.s}</div>
+    </div>`).join('');
+}
+
+function renderFlags(rows){
+  const fl = rows.filter(r=>r.flagged).sort((a,b)=>a.avg-b.avg);
+  $('#flag-cnt').textContent = fl.length;
+  const p=$('#flag-panel'); p.classList.toggle('clear', fl.length===0);
+  if(!fl.length){ $('#flag-list').innerHTML='<span style="font-size:12.5px;color:var(--muted)">No one in the current view is below the threshold. </span>'; return; }
+  $('#flag-list').innerHTML = fl.map(r=>`
+    <div class="flag-chip"><span class="nm">${r.name}</span><span class="rs">${r.reason}</span></div>`).join('');
+}
+
+function statusOf(r){
+  if(r.flagged) return {t:'At risk',c:'var(--bad)'};
+  if(r.avg>=4) return {t:'On target',c:'var(--good)'};
+  if(r.avg>=2) return {t:'Steady',c:'var(--warn)'};
+  return {t:'Low',c:'var(--faint)'};
+}
+
+function renderTable(rows){
+  const q=($('#tbl-search').value||'').toLowerCase();
+  let r2 = q? rows.filter(r=>r.name.toLowerCase().includes(q)) : rows;
+  r2 = r2.slice().sort((a,b)=>{
+    let x=a[sortKey], y=b[sortKey];
+    if(sortKey==='name'||sortKey==='status'){x=(''+(x||'')).toLowerCase();y=(''+(y||'')).toLowerCase();return x<y?-sortDir:x>y?sortDir:0;}
+    x=x==null?-1:x; y=y==null?-1:y; return (x-y)*sortDir;
+  });
+  $('#tbl-count').textContent = r2.length;
+  $('#tbl-body').innerHTML = r2.map(r=>{
+    const capPct = Math.min(100, r.avg/6*100);
+    const mClass = r.avg<1.5?'low':r.avg<3?'mid':r.avg<5?'':'ok';
+    const st = statusOf(r);
+    return `<tr class="${r.flagged?'flagged':''}">
+      <td class="name">${r.name}</td>
+      <td>${fmt(r.avg)}</td>
+      <td><span class="meter ${mClass}"><span style="width:${capPct}%"></span></span> <span style="color:var(--faint);font-size:11px">${fmt0(capPct)}%</span></td>
+      <td>${fmt(r.hours,1)}</td>
+      <td>${r.days}</td>
+      <td>${fmt0(r.att)}%</td>
+      <td>${fmt0(r.subs)}</td>
+      <td>${r.aht==null?'—':fmt(r.aht,2)}</td>
+      <td style="text-align:center"><span class="status"><span class="dot" style="background:${st.c}"></span>${st.t}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+/* ---------- charts ---------- */
+function baseGrid(){ return {color:'rgba(27,27,25,.07)'}; }
+function tickFont(){ return {family:"'IBM Plex Mono', monospace", size:10}; }
+
+function renderTimeline(f){
+  const s = dailySeries(f);
+  const labels = s.map(x=> x.d.slice(5));
+  if(charts.tl) charts.tl.destroy();
+  charts.tl = new Chart($('#ch-timeline'),{
+    data:{labels,datasets:[
+      {type:'bar',label:'Hours logged',data:s.map(x=>x.hours),backgroundColor:'rgba(51,84,125,.85)',yAxisID:'y',order:3,borderRadius:3},
+      {type:'line',label:'Expected (6h × people)',data:s.map(x=>x.expected),borderColor:'#BB3B2C',borderDash:[5,4],borderWidth:1.5,pointRadius:0,yAxisID:'y',order:1,tension:.2},
+      {type:'line',label:'Active people',data:s.map(x=>x.people),borderColor:'#15795B',backgroundColor:'#15795B',borderWidth:2,pointRadius:2.5,yAxisID:'y1',order:0,tension:.25}
+    ]},
+    options:chartOpts({
+      scales:{
+        x:{grid:{display:false},ticks:{font:tickFont(),maxRotation:0,autoSkip:true}},
+        y:{position:'left',grid:baseGrid(),ticks:{font:tickFont()},title:{display:true,text:'Hours',font:{size:11}}},
+        y1:{position:'right',grid:{display:false},ticks:{font:tickFont()},title:{display:true,text:'People',font:{size:11}}}
+      }
+    })
+  });
+}
+
+function renderLow(rows){
+  const low = rows.slice().sort((a,b)=>a.avg-b.avg).slice(0,20);
+  $('#low-box').style.height = Math.max(220, low.length*19+70)+'px';
+  if(charts.low) charts.low.destroy();
+  charts.low = new Chart($('#ch-low'),{
+    type:'bar',
+    data:{labels:low.map(r=>r.name),datasets:[{label:'Avg h/day',data:low.map(r=>r.avg),
+      backgroundColor:low.map(r=>r.flagged?'#BB3B2C':r.avg<3?'#B0730E':'#33547D'),borderRadius:3}]},
+    options:chartOpts({
+      indexAxis:'y',
+      plugins:{legend:{display:false},
+        annotation:false,
+        tooltip:{callbacks:{label:c=>fmt(c.raw)+' h/day · target 6'}}},
+      scales:{
+        x:{grid:baseGrid(),ticks:{font:tickFont()},suggestedMax:6,title:{display:true,text:'Avg hours/day (dashed = 6h target)',font:{size:11}}},
+        y:{grid:{display:false},ticks:{font:{family:"'Inter'",size:11}}}
+      }
+    }),
+    plugins:[targetLine(6)]
+  });
+}
+
+function targetLine(val){
+  return {id:'tl',afterDraw(c){
+    const x=c.scales.x; if(!x)return; const px=x.getPixelForValue(val);
+    if(px>c.chartArea.right||px<c.chartArea.left)return;
+    const ctx=c.ctx; ctx.save();ctx.strokeStyle='#BB3B2C';ctx.setLineDash([5,4]);ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.moveTo(px,c.chartArea.top);ctx.lineTo(px,c.chartArea.bottom);ctx.stroke();ctx.restore();
+  }};
+}
+
+function renderScatter(rows){
+  if(charts.sc) charts.sc.destroy();
+  const maxD = Math.max(1,...rows.map(r=>r.days));
+  const pts = rows.map(r=>({x:r.hours,y:r.subs,r:4+(r.days/maxD)*9,name:r.name,flagged:r.flagged}));
+  charts.sc = new Chart($('#ch-scatter'),{
+    type:'bubble',
+    data:{datasets:[{data:pts,backgroundColor:pts.map(p=>p.flagged?'rgba(187,59,44,.6)':'rgba(51,84,125,.5)'),borderColor:pts.map(p=>p.flagged?'#BB3B2C':'#33547D'),borderWidth:1}]},
+    options:chartOpts({
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.raw.name+': '+fmt(c.raw.x)+'h · '+fmt0(c.raw.y)+' subs'}}},
+      layout:{padding:8},
+      scales:{
+        x:{grid:baseGrid(),ticks:{font:tickFont()},title:{display:true,text:'Total hours',font:{size:11}}},
+        y:{grid:baseGrid(),ticks:{font:tickFont()},title:{display:true,text:'Submissions',font:{size:11}}}
+      }
+    })
+  });
+}
+
+function chartOpts(extra){
+  return Object.assign({responsive:true,maintainAspectRatio:false,
+    plugins:{legend:{display:false}},
+    interaction:{mode:'nearest',intersect:false}}, extra);
+}
+
+/* ---------- people picker ---------- */
+function buildPeople(){
+  const people=[...new Set(daily.map(r=>r.e))].sort((a,b)=>nm(a).localeCompare(nm(b)));
+  const q=($('#people-search').value||'').toLowerCase();
+  const list=people.filter(e=>nm(e).toLowerCase().includes(q));
+  $('#people-opts').innerHTML=list.map(e=>`<label class="opt"><input type="checkbox" value="${e}" ${selectedPeople.has(e)?'checked':''}> ${nm(e)}</label>`).join('');
+  $('#people-opts').querySelectorAll('input').forEach(cb=>cb.onchange=()=>{
+    cb.checked?selectedPeople.add(cb.value):selectedPeople.delete(cb.value);
+    updatePeopleLbl(); render();
+  });
+}
+function updatePeopleLbl(){
+  const n=selectedPeople.size;
+  $('#people-cnt').textContent = n?n:'all';
+  $('#people-lbl').textContent = n? (n===1?nm([...selectedPeople][0]):n+' selected') : 'All people';
+}
+
+/* ---------- CSV parse / merge ---------- */
+function parseCSV(text){
+  const lines=text.replace(/\r/g,'').split('\n').filter(l=>l.trim());
+  const head=lines[0].split(',').map(h=>h.trim());
+  return lines.slice(1).map(l=>{
+    const v=l.split(','); const o={}; head.forEach((h,i)=>o[h]=(v[i]||'').trim()); return o;
+  });
+}
+// daily.csv row mapper
+function parseDailyRows(text){
+  const out={};
+  parseCSV(text).forEach(r=>{
+    const e=r['Annotator Email'], d=r['Date']; if(!e||!d) return;
+    const rawAht = r['AHT Ratio vs Benchmark'];
+    const aht = rawAht==null || rawAht==='' ? null : parseFloat(rawAht);
+    out[d+'|'+e]={d, e, h:parseFloat(r['Total Hours']||0)||0, s:parseInt(parseFloat(r['Total Submissions']||0))||0, a:Number.isFinite(aht)?aht:null};
+  });
+  return Object.values(out);
+}
+
+/* ---------- misc ---------- */
+function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2600);}
+function refreshWindowDefaults(setInputs){
+  const ds=allDates(); if(!ds.length)return;
+  $('#m-window').textContent = ds[0]+'  →  '+ds[ds.length-1];
+  $('#m-records').textContent = daily.length;
+  $('#m-people').textContent = new Set(daily.map(r=>r.e)).size;
+  if(setInputs){ $('#f-start').value=ds[0]; $('#f-end').value=ds[ds.length-1]; }
+}
+function exportCSV(){
+  const {rows}=aggregate();
+  const head=['Annotator','Avg h/day','Total hours','Days active','Attendance %','Submissions','AHT','Flagged'];
+  const lines=[head.join(',')].concat(rows.map(r=>[r.name,fmt(r.avg),fmt(r.hours),r.days,fmt0(r.att),fmt0(r.subs),r.aht==null?'':fmt(r.aht,2),r.flagged?'YES':''].join(',')));
+  const blob=new Blob([lines.join('\n')],{type:'text/csv'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='ops_export.csv';a.click();
+}
+
+/* ---------- wire up ---------- */
+function bind(){
+  ['f-start','f-end'].forEach(id=>$('#'+id).addEventListener('change',render));
+  $('#f-thr').addEventListener('input',e=>{$('#thr-val').textContent=fmt(parseFloat(e.target.value));render();});
+  $('#tbl-search').addEventListener('input',()=>renderTable(aggregate().rows));
+  $('#btn-reset').onclick=()=>{selectedPeople.clear();updatePeopleLbl();$('#f-thr').value=1.3;$('#thr-val').textContent='1.3';refreshWindowDefaults(true);$('#tbl-search').value='';buildPeople();render();};
+  $('#btn-csv').onclick=exportCSV;
+  // people popup
+  $('#people-box').onclick=()=>{$('#people-pop').classList.toggle('open');buildPeople();$('#people-search').focus();};
+  $('#people-search').addEventListener('input',buildPeople);
+  document.addEventListener('click',e=>{if(!e.target.closest('.people'))$('#people-pop').classList.remove('open');});
+  // sorting
+  document.querySelectorAll('thead th').forEach(th=>th.onclick=()=>{
+    const k=th.dataset.k; if(k==='cap')return;
+    if(sortKey===k)sortDir*=-1;else{sortKey=k;sortDir=(k==='name')?1:-1;}
+    document.querySelectorAll('thead th').forEach(t=>{t.classList.remove('sorted');t.querySelector('.arr')&&(t.querySelector('.arr').textContent='');});
+    th.classList.add('sorted'); const ar=th.querySelector('.arr'); if(ar)ar.textContent=sortDir<0?'▼':'▲';
+    renderTable(aggregate().rows);
+  });
+}
+
+/* ---------- data loading: daily.csv only ---------- */
+function setStatus(state, msg){
+  const colors={live:'var(--good)', error:'var(--bad)', loading:'var(--faint)'};
+  $('#ds-dot').style.background = colors[state]||'var(--faint)';
+  $('#ds-text').textContent = msg;
+}
+async function fetchCSV(url){
+  const res = await fetch(url + (url.includes('?')?'&':'?') + 't=' + Date.now(), {cache:'no-store'});
+  if(!res.ok) throw new Error(res.status);
+  const txt = await res.text();
+  if(!txt || !txt.trim()) throw new Error('empty');
+  return txt;
+}
+async function boot(){
+  setStatus('loading','Loading daily.csv…');
+  try{
+    const txt = await fetchCSV(DATA_DAILY_URL);
+    const rows = parseDailyRows(txt);
+    if(!rows.length) throw new Error('No usable rows found. Required columns: Date, Annotator Email, Total Hours.');
+    daily = rows;
+    const when = new Date().toLocaleString(undefined,{hour:'2-digit',minute:'2-digit',day:'numeric',month:'short'});
+    setStatus('live', `Live · ${DATA_DAILY_URL} · ${daily.length} records · loaded ${when}`);
+
+    refreshWindowDefaults(true);
+    buildPeople(); updatePeopleLbl(); bind();
+    const dth=document.querySelector('thead th[data-k="avg"]');
+    dth.classList.add('sorted'); dth.querySelector('.arr').textContent='▲';
+    render();
+  }catch(e){
+    setStatus('error', `${DATA_DAILY_URL} could not be loaded. Upload/replace daily.csv in the same GitHub folder as this HTML, then refresh.`);
+    $('#m-window').textContent = '—';
+    $('#m-records').textContent = '0';
+    $('#m-people').textContent = '0';
+    $('#kpis').innerHTML = '';
+  }
+}
+boot();
+</script>
+</body>
+</html>
